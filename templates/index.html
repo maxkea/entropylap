@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entropy của văn bản</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 24px auto; padding: 0 16px; color: #222; }
+  textarea { width: 100%; height: 130px; font-size: 15px; padding: 8px; box-sizing: border-box; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .col { flex: 1 1 460px; }
+  .box { background: #f5f5f5; border-radius: 8px; padding: 10px 14px; margin: 12px 0; }
+  canvas { width: 100%; height: 280px; background: #fff; border: 1px solid #ddd; border-radius: 6px; }
+  h3 { margin: 8px 0 4px; }
+  input[type=range] { width: 300px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<h1>Nhìn thấy entropy của văn bản</h1>
+
+<textarea id="text" placeholder="Dán đoạn văn tiếng Anh vào đây..."></textarea>
+
+<div class="box">
+  Số chữ cái: <b id="total">0</b> &nbsp;|&nbsp;
+  H = <b id="h">0.0000</b> bit &nbsp;|&nbsp;
+  H tối đa = log₂26 ≈ <b id="hmax">4.7004</b> bit<br>
+  <small>H càng thấp thì văn bản càng dễ đoán. Đường đỏ nét đứt: mức 1/26.</small>
+</div>
+
+<div class="box">
+  Khóa k: <input type="range" id="k" min="0" max="25" value="0"> <b id="kval">0</b>
+</div>
+
+<div class="row">
+  <div class="col">
+    <h3>Bản rõ &nbsp;(H = <span id="hp">0</span>)</h3>
+    <canvas id="plain" width="560" height="280"></canvas>
+  </div>
+  <div class="col">
+    <h3>Bản mã Caesar &nbsp;(H = <span id="hc">0</span>)</h3>
+    <canvas id="cipher" width="560" height="280"></canvas>
+  </div>
+</div>
+
+<script>
+const textEl = document.getElementById('text');
+const kEl = document.getElementById('k');
+
+function draw(canvasId, freq, letters, uniform) {
+  const cv = document.getElementById(canvasId);
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  const L = 44, R = 10, T = 14, B = 28;
+  ctx.clearRect(0, 0, W, H);
+
+  const maxV = Math.max(...freq, uniform) * 1.15 || 1;
+  const plotW = W - L - R, plotH = H - T - B;
+  const y = v => T + plotH - (v / maxV) * plotH;
+
+  ctx.strokeStyle = '#ccc'; ctx.fillStyle = '#555'; ctx.font = '11px sans-serif';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const v = maxV * i / 4;
+    ctx.beginPath(); ctx.moveTo(L, y(v)); ctx.lineTo(W - R, y(v)); ctx.stroke();
+    ctx.fillText((v * 100).toFixed(1) + '%', L - 4, y(v) + 4);
+  }
+
+  const bw = plotW / 26;
+  ctx.textAlign = 'center';
+  for (let i = 0; i < 26; i++) {
+    const x = L + i * bw;
+    ctx.fillStyle = '#3b7ddd';
+    ctx.fillRect(x + 2, y(freq[i]), bw - 4, T + plotH - y(freq[i]));
+    ctx.fillStyle = '#333';
+    ctx.fillText(letters[i], x + bw / 2, H - 10);
+  }
+
+  ctx.strokeStyle = '#d33'; ctx.setLineDash([6, 4]); ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(L, y(uniform)); ctx.lineTo(W - R, y(uniform)); ctx.stroke();
+  ctx.setLineDash([]); ctx.lineWidth = 1;
+}
+
+async function update() {
+  const k = parseInt(kEl.value);
+  document.getElementById('kval').textContent = k;
+  const res = await fetch('/analyze', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({text: textEl.value, k: k})
+  });
+  const d = await res.json();
+  document.getElementById('total').textContent = d.total;
+  document.getElementById('h').textContent = d.plain_entropy.toFixed(4);
+  document.getElementById('hmax').textContent = d.max_entropy.toFixed(4);
+  document.getElementById('hp').textContent = d.plain_entropy.toFixed(4);
+  document.getElementById('hc').textContent = d.cipher_entropy.toFixed(4);
+  draw('plain', d.plain_freq, d.letters, d.uniform);
+  draw('cipher', d.cipher_freq, d.letters, d.uniform);
+}
+
+textEl.addEventListener('input', update);
+kEl.addEventListener('input', update);
+update();
+</script>
+</body>
+</html>
